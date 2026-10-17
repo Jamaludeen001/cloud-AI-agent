@@ -1,0 +1,97 @@
+name: Deploy Qwen Embedder
+
+on:
+  workflow_dispatch:
+    inputs:
+      param_file:
+        description: 'Parameter file name (without .json)'
+        required: true
+        default: 'qwen-embedder'
+      stack_name:
+        description: 'CloudFormation stack name'
+        required: true
+        default: 'qwen-embedder-stack'
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - outputs
+          - delete
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: qwen-embedder
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::340601547920:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      # 1. Login to ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # 2. Create ECR repo if it doesn't exist (using CLI so CloudFormation doesn't fail on first run)
+      - name: Ensure ECR Repository Exists
+        run: |
+          aws ecr describe-repositories --repository-names ${{ env.ECR_REPO }} --region ${{ env.AWS_REGION }} || \
+          aws ecr create-repository --repository-name ${{ env.ECR_REPO }} --region ${{ env.AWS_REGION }}
+
+      # 3. Build and Push Docker Image
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd embedder_api
+          docker build -t $ECR_REGISTRY/${{ env.ECR_REPO }}:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/${{ env.ECR_REPO }}:$IMAGE_TAG
+          # Also tag as latest
+          docker tag $ECR_REGISTRY/${{ env.ECR_REPO }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPO }}:latest
+          docker push $ECR_REGISTRY/${{ env.ECR_REPO }}:latest
+
+      # 4. Deploy CloudFormation Stack
+      - name: Deploy Stack
+        if: ${{ github.event.inputs.action == 'deploy' }}
+        run: |
+          aws cloudformation deploy \
+            --template-file templates/qwen-embedder.yml \
+            --stack-name ${{ github.event.inputs.stack_name }} \
+            --role-arn arn:aws:iam::340601547920:role/CloudFormationServiceRole \
+            --parameter-overrides file://parameters/${{ github.event.inputs.param_file }}.json \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+
+      # 5. Show Outputs
+      - name: Show Stack Outputs
+        if: ${{ github.event.inputs.action == 'outputs' }}
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name ${{ github.event.inputs.stack_name }} \
+            --query 'Stacks[0].Outputs' \
+            --output table
+
+      # 6. Delete Stack
+      - name: Delete Stack
+        if: ${{ github.event.inputs.action == 'delete' }}
+        run: |
+          aws cloudformation delete-stack \
+            --stack-name ${{ github.event.inputs.stack_name }}
+          echo "Delete initiated for stack: ${{ github.event.inputs.stack_name }}"
