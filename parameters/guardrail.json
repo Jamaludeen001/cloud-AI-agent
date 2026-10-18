@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-0abc123def456" 
+  },
+  {
+    "ParameterKey": "SubnetIds",
+    "ParameterValue": "subnet-0abc123,subnet-0def456" 
+  },
+  {
+    "ParameterKey": "ImageUri",
+    "ParameterValue": "340601547920.dkr.ecr.us-east-1.amazonaws.com/guardrail-api:latest"
+  }
+]
