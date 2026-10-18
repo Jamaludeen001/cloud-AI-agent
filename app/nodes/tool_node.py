@@ -19,7 +19,7 @@ def tool_node(state: AgentState, config: dict = None) -> Dict[str, Any]:
         tool_args = dict(tool_call["args"])
         tool_id = tool_call["id"]
         
-        # Enforce Slot-Filling in Python
+        # Python-Level Enforcement for RAG tool
         if tool_name == "search_documents":
             if not tool_args.get("customer_name") and not tool_args.get("invoice_number"):
                 logger.warning("[tool_node] Search blocked: No metadata provided.")
@@ -33,12 +33,10 @@ def tool_node(state: AgentState, config: dict = None) -> Dict[str, Any]:
         
         if tool_name in tool_registry:
             try:
-                # Execute the tool (This might crash due to Qdrant network error)
                 result = tool_registry[tool_name].invoke(tool_args)
             except Exception as e:
-                # CATCH THE CRASH HERE
                 logger.exception(f"[tool_node] Execution failed for {tool_name}")
-                result = f"Tool Execution Error: {str(e)}. Please check your arguments or try again."
+                result = f"Tool Execution Error: {e}"
         else:
             result = f"Tool {tool_name} not found."
             
