@@ -21,10 +21,16 @@ Parameters:
     Default: ""
   EmbedderUrl:
     Type: String
-    Default: "http://qwen-e-LoadB-40IFScOlvagH-1351019476.us-east-1.elb.amazonaws.com"
+    Default: ""
   GuardrailUrl:
     Type: String
-    Default: "http://guardr-loadb-mrfbbmzd3zvc-305874536.us-east-1.elb.amazonaws.com"
+    Default: ""
+  LLMProvider:
+    Type: String
+    Default: ""
+  LLMModel:
+    Type: String
+    Default: ""
   MaxLlmCalls:
     Type: String
     Default: "4"
@@ -152,6 +158,12 @@ Resources:
           PortMappings:
             - ContainerPort: !Ref ContainerPort
           Environment:
+            # 🚨 INJECTED LLM CONFIG 🚨
+            - Name: LLM_PROVIDER
+              Value: !Ref LLMProvider
+            - Name: LLM_MODEL
+              Value: !Ref LLMModel
+            # Static configs
             - Name: EMBEDDER_URL
               Value: !Ref EmbedderUrl
             - Name: GUARDRAIL_URL
