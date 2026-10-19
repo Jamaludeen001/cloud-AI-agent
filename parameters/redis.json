@@ -13,6 +13,6 @@
   },
   {
     "ParameterKey": "ClusterName",
-    "ParameterValue": "agenticapp-main-redis"
+    "ParameterValue": "agenticappmainredis"
   }
 ]
