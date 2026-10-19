@@ -17,6 +17,10 @@ Parameters:
     Type: String
     Default: ""
     Description: "ARN of the Secrets Manager secret (leave empty if no secrets needed)"
+  EnvironmentVariables:
+    Type: String
+    Default: "[]"
+    Description: "JSON string of non-sensitive environment variables"
 
 Conditions:
   HasSecret: !Not [!Equals [!Ref SecretArn, ""]]
@@ -112,13 +116,7 @@ Resources:
           Image: !Ref ImageUri
           PortMappings:
             - ContainerPort: !Ref ContainerPort
-          Environment:
-            # 🚨 Standard URLs (Non-sensitive) 🚨
-            - Name: EMBEDDER_URL
-              Value: "http://qwen-e-LoadB-40IFScOlvagH-1351019476.us-east-1.elb.amazonaws.com"
-            - Name: GUARDRAIL_URL
-              Value: "http://guardr-loadb-mrfbbmzd3zvc-305874536.us-east-1.elb.amazonaws.com"
-          # 🚨 Conditionally inject secrets from Secrets Manager 🚨
+          Environment: !Ref EnvironmentVariables
           Secrets: !If
             - HasSecret
             - - Name: GOOGLE_API_KEY
