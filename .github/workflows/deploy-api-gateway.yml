@@ -44,8 +44,9 @@ jobs:
             --query 'Stacks[0].Outputs[?OutputKey==`ServiceURL`].OutputValue' \
             --output text)
           
-          # 🚨 Force lowercase to fix API Gateway "Illegal character" error 🚨
-          BACKEND_URL=$(echo $SERVICE_URL | sed 's|http://||' | sed 's|/$||' | tr '[:upper:]' '[:lower:]')
+          # Only strip the http:// prefix and the trailing slash. 
+          # DO NOT force lowercase, as ALB DNS names are case-sensitive in API Gateway routing.
+          BACKEND_URL=$(echo $SERVICE_URL | sed 's|http://||' | sed 's|/$||')
           
           echo "BACKEND_URL=$BACKEND_URL" >> $GITHUB_ENV
           echo "Found Backend: $BACKEND_URL"
