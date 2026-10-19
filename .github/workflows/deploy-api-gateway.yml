@@ -44,9 +44,9 @@ jobs:
             --query 'Stacks[0].Outputs[?OutputKey==`ServiceURL`].OutputValue' \
             --output text)
           
-          BACKEND_URL=$(echo $SERVICE_URL | sed 's|http://||' | sed 's|/$||')
+          # 🚨 FIX: Strip http://, trailing slash, and force lowercase 🚨
+          BACKEND_URL=$(echo $SERVICE_URL | sed 's|http://||' | sed 's|/$||' | tr '[:upper:]' '[:lower:]')
           
-          # Write to GITHUB_ENV so it's available in the next step
           echo "BACKEND_URL=$BACKEND_URL" >> $GITHUB_ENV
           echo "Found Backend: $BACKEND_URL"
 
