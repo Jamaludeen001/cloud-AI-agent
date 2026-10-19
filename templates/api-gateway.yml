@@ -78,7 +78,6 @@ Resources:
   # 7. Usage Plan (Rate Limiting)
   UsagePlan:
     Type: AWS::ApiGateway::UsagePlan
-    # 🚨 FIX: Explicitly wait for the deployment stage to exist 🚨
     DependsOn: Deployment
     Properties:
       UsagePlanName: !Sub "${AppName}-plan"
