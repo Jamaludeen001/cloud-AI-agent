@@ -44,7 +44,7 @@ jobs:
             --query 'Stacks[0].Outputs[?OutputKey==`ServiceURL`].OutputValue' \
             --output text)
           
-          # 🚨 FIX: Strip http://, trailing slash, and force lowercase 🚨
+          # 🚨 Force lowercase to fix API Gateway "Illegal character" error 🚨
           BACKEND_URL=$(echo $SERVICE_URL | sed 's|http://||' | sed 's|/$||' | tr '[:upper:]' '[:lower:]')
           
           echo "BACKEND_URL=$BACKEND_URL" >> $GITHUB_ENV
@@ -57,7 +57,9 @@ jobs:
             --template-file templates/api-gateway.yml \
             --stack-name ${{ env.STACK_NAME }} \
             --role-arn arn:aws:iam::340601547920:role/CloudFormationServiceRole \
-            --parameter-overrides BackendUrl=$BACKEND_URL \
+            --parameter-overrides \
+              BackendUrl=$BACKEND_URL \
+              DeploymentHash=${{ github.sha }} \
             --no-fail-on-empty-changeset
 
       - name: Show Outputs
