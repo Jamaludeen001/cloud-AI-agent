@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'API Gateway for Main Agentic App'
+
+Parameters:
+  AppName:
+    Type: String
+    Default: 'main-agentic-api'
+  BackendUrl:
+    Type: String
+    Description: 'The DNS name of the Application Load Balancer (without http://)'
+
+Resources:
+  # 1. The API Gateway
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Ref AppName
+      Description: "Public API for the Main Agentic App"
+
+  # 2. A Proxy resource to forward ALL requests to the Load Balancer
+  ProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: '{proxy+}'
+
+  # 3. The HTTP Method (ANY = GET, POST, PUT, etc.)
+  ProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      ApiKeyRequired: true
+      Integration:
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: ANY
+        Uri: !Sub "http://${BackendUrl}/{proxy}"
+        PassthroughBehavior: WHEN_NO_MATCH
+
+  # 4. The Root Method (for requests to /)
+  RootMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !GetAtt RestApi.RootResourceId
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      ApiKeyRequired: true
+      Integration:
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: ANY
+        Uri: !Sub "http://${BackendUrl}/"
+        PassthroughBehavior: WHEN_NO_MATCH
+
+  # 5. API Key
+  ApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Name: !Sub "${AppName}-key"
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref RestApi
+          StageName: prod
+
+  # 6. Usage Plan (Rate Limiting)
+  UsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub "${AppName}-plan"
+      ApiStages:
+        - ApiId: !Ref RestApi
+          Stage: prod
+      Throttle:
+        BurstLimit: 100
+        RateLimit: 50
+      Quota:
+        Limit: 10000
+        Period: MONTH
+
+  UsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref ApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref UsagePlan
+
+  # 7. Deployment
+  Deployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: 
+      - ProxyMethod
+      - RootMethod
+    Properties:
+      RestApiId: !Ref RestApi
+      StageName: prod
+
+Outputs:
+  ApiGatewayUrl:
+    Description: "The public API URL"
+    Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  ApiKeyId:
+    Description: "The API Key ID"
+    Value: !Ref ApiKey
