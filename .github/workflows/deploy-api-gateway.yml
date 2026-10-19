@@ -1,0 +1,76 @@
+name: Deploy API Gateway
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - outputs
+          - delete
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  STACK_NAME: main-agentic-api-stack
+  APP_STACK_NAME: main-Agentic-app-stack
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::340601547920:role/GitHubActionsDeployRole-CloudAIAgent
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      - name: Fetch Backend URL
+        id: fetch-backend
+        run: |
+          SERVICE_URL=$(aws cloudformation describe-stacks \
+            --stack-name ${{ env.APP_STACK_NAME }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`ServiceURL`].OutputValue' \
+            --output text)
+          
+          BACKEND_URL=$(echo $SERVICE_URL | sed 's|http://||' | sed 's|/$||')
+          
+          # Write to GITHUB_ENV so it's available in the next step
+          echo "BACKEND_URL=$BACKEND_URL" >> $GITHUB_ENV
+          echo "Found Backend: $BACKEND_URL"
+
+      - name: Deploy API Gateway
+        if: ${{ github.event.inputs.action == 'deploy' }}
+        run: |
+          aws cloudformation deploy \
+            --template-file templates/api-gateway.yml \
+            --stack-name ${{ env.STACK_NAME }} \
+            --role-arn arn:aws:iam::340601547920:role/CloudFormationServiceRole \
+            --parameter-overrides BackendUrl=$BACKEND_URL \
+            --no-fail-on-empty-changeset
+
+      - name: Show Outputs
+        if: ${{ github.event.inputs.action == 'deploy' || github.event.inputs.action == 'outputs' }}
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query 'Stacks[0].Outputs' \
+            --output table
+
+      - name: Delete Stack
+        if: ${{ github.event.inputs.action == 'delete' }}
+        run: |
+          aws cloudformation delete-stack \
+            --stack-name ${{ env.STACK_NAME }}
+          echo "Delete initiated for stack: ${{ env.STACK_NAME }}"
