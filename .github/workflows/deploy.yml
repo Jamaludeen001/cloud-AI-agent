@@ -35,7 +35,7 @@ jobs:
         run: |
           SERVICE_NAME=$(jq -r '.[] | select(.ParameterKey=="ServiceName") | .ParameterValue' parameters/${{ github.event.inputs.param_file }}.json)
           echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_ENV
-          # 🚨 Generate lowercase name for ECR 🚨
+          # Generate lowercase name for ECR
           echo "ECR_REPO_NAME=$(echo "$SERVICE_NAME" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Configure AWS Credentials
@@ -88,15 +88,25 @@ jobs:
             CONTAINER_PORT=8080
           fi
           
+          # 1. Read the original parameter file
+          PARAM_FILE="parameters/${{ github.event.inputs.param_file }}.json"
+          PARAMS=$(cat $PARAM_FILE)
+          
+          # 2. Inject the dynamic values (ImageUri and ContainerPort) using jq
+          UPDATED_PARAMS=$(echo "$PARAMS" | jq \
+            --arg img "$ECR_REGISTRY/$ECR_REPO_NAME:$IMAGE_TAG" \
+            --arg port "$CONTAINER_PORT" \
+            '. + [{"ParameterKey": "ImageUri", "ParameterValue": $img}, {"ParameterKey": "ContainerPort", "ParameterValue": $port}]')
+            
+          # 3. Write to a temporary file
+          echo "$UPDATED_PARAMS" > /tmp/final-params.json
+          
+          # 4. Deploy using ONLY the file
           aws cloudformation deploy \
             --template-file templates/microservice.yml \
             --stack-name ${SERVICE_NAME}-stack \
             --role-arn arn:aws:iam::340601547920:role/CloudFormationServiceRole \
-            --parameter-overrides \
-              ServiceName=${SERVICE_NAME} \
-              ImageUri=${ECR_REGISTRY}/${ECR_REPO_NAME}:${IMAGE_TAG} \
-              ContainerPort=${CONTAINER_PORT} \
-              file://parameters/${{ github.event.inputs.param_file }}.json \
+            --parameter-overrides file:///tmp/final-params.json \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset
 
