@@ -55,17 +55,7 @@ Resources:
         Uri: !Sub "http://${BackendUrl}/"
         PassthroughBehavior: WHEN_NO_MATCH
 
-  # 5. API Key
-  ApiKey:
-    Type: AWS::ApiGateway::ApiKey
-    Properties:
-      Name: !Sub "${AppName}-key"
-      Enabled: true
-      StageKeys:
-        - RestApiId: !Ref RestApi
-          StageName: prod
-
-  # 6. Deployment (Creates the 'prod' stage)
+  # 5. Deployment (Creates the 'prod' stage)
   Deployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn: 
@@ -74,6 +64,17 @@ Resources:
     Properties:
       RestApiId: !Ref RestApi
       StageName: prod
+
+  # 6. API Key
+  ApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn: Deployment
+    Properties:
+      Name: !Sub "${AppName}-key"
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref RestApi
+          StageName: prod
 
   # 7. Usage Plan (Rate Limiting)
   UsagePlan:
