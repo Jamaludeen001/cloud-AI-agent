@@ -65,9 +65,21 @@ Resources:
         - RestApiId: !Ref RestApi
           StageName: prod
 
-  # 6. Usage Plan (Rate Limiting)
+  # 6. Deployment (Creates the 'prod' stage)
+  Deployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: 
+      - ProxyMethod
+      - RootMethod
+    Properties:
+      RestApiId: !Ref RestApi
+      StageName: prod
+
+  # 7. Usage Plan (Rate Limiting)
   UsagePlan:
     Type: AWS::ApiGateway::UsagePlan
+    # 🚨 FIX: Explicitly wait for the deployment stage to exist 🚨
+    DependsOn: Deployment
     Properties:
       UsagePlanName: !Sub "${AppName}-plan"
       ApiStages:
@@ -80,22 +92,14 @@ Resources:
         Limit: 10000
         Period: MONTH
 
+  # 8. Attach Key to Plan
   UsagePlanKey:
     Type: AWS::ApiGateway::UsagePlanKey
+    DependsOn: UsagePlan
     Properties:
       KeyId: !Ref ApiKey
       KeyType: API_KEY
       UsagePlanId: !Ref UsagePlan
-
-  # 7. Deployment
-  Deployment:
-    Type: AWS::ApiGateway::Deployment
-    DependsOn: 
-      - ProxyMethod
-      - RootMethod
-    Properties:
-      RestApiId: !Ref RestApi
-      StageName: prod
 
 Outputs:
   ApiGatewayUrl:
