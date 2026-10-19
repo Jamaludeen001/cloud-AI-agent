@@ -78,10 +78,6 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          VPC_ID=$(jq -r '.[] | select(.ParameterKey=="VpcId") | .ParameterValue' parameters/${{ github.event.inputs.param_file }}.json)
-          SUBNET_IDS=$(jq -r '.[] | select(.ParameterKey=="SubnetIds") | .ParameterValue' parameters/${{ github.event.inputs.param_file }}.json)
-          SECRET_ARN=$(jq -r '.[] | select(.ParameterKey=="SecretArn") | .ParameterValue // ""' parameters/${{ github.event.inputs.param_file }}.json)
-          
           if [ "$SERVICE_NAME" = "main-Agentic-app" ]; then
             CONTAINER_PORT=8000
           else
@@ -94,10 +90,27 @@ jobs:
             --role-arn arn:aws:iam::340601547920:role/CloudFormationServiceRole \
             --parameter-overrides \
               ServiceName=${SERVICE_NAME} \
-              VpcId=${VPC_ID} \
-              SubnetIds=${SUBNET_IDS} \
               ImageUri=${ECR_REGISTRY}/${SERVICE_NAME}:${IMAGE_TAG} \
               ContainerPort=${CONTAINER_PORT} \
-              SecretArn=${SECRET_ARN} \
+              file://parameters/${{ github.event.inputs.param_file }}.json \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset
+
+      - name: Show Stack Outputs
+        if: ${{ github.event.inputs.action == 'outputs' }}
+        env:
+          SERVICE_NAME: ${{ env.SERVICE_NAME }}
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name ${SERVICE_NAME}-stack \
+            --query 'Stacks[0].Outputs' \
+            --output table
+
+      - name: Delete Stack
+        if: ${{ github.event.inputs.action == 'delete' }}
+        env:
+          SERVICE_NAME: ${{ env.SERVICE_NAME }}
+        run: |
+          aws cloudformation delete-stack \
+            --stack-name ${SERVICE_NAME}-stack
+          echo "Delete initiated for stack: ${SERVICE_NAME}-stack"
