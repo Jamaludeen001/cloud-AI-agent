@@ -1,0 +1,65 @@
+name: Deploy Redis Cache
+
+on:
+  workflow_dispatch:
+    inputs:
+      param_file:
+        description: 'Parameter file name (e.g., redis)'
+        required: true
+        default: 'redis'
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - outputs
+          - delete
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  STACK_NAME: main-app-redis-stack
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::340601547920:role/GitHubActionsDeployRole-CloudAIAgent
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      - name: Deploy Redis Stack
+        if: ${{ github.event.inputs.action == 'deploy' }}
+        run: |
+          aws cloudformation deploy \
+            --template-file templates/redis.yml \
+            --stack-name ${{ env.STACK_NAME }} \
+            --role-arn arn:aws:iam::340601547920:role/CloudFormationServiceRole \
+            --parameter-overrides file://parameters/${{ github.event.inputs.param_file }}.json \
+            --no-fail-on-empty-changeset
+
+      - name: Show Outputs
+        if: ${{ github.event.inputs.action == 'deploy' || github.event.inputs.action == 'outputs' }}
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query 'Stacks[0].Outputs' \
+            --output table
+
+      - name: Delete Stack
+        if: ${{ github.event.inputs.action == 'delete' }}
+        run: |
+          aws cloudformation delete-stack \
+            --stack-name ${{ env.STACK_NAME }}
+          echo "Delete initiated for stack: ${{ env.STACK_NAME }}"
