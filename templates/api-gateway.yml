@@ -8,6 +8,10 @@ Parameters:
   BackendUrl:
     Type: String
     Description: 'The DNS name of the Application Load Balancer (without http://)'
+  DeploymentHash:
+    Type: String
+    Description: 'Unique identifier (e.g., Git SHA) to force a new deployment'
+    Default: 'v1'
 
 Resources:
   # 1. The API Gateway
@@ -55,7 +59,7 @@ Resources:
         Uri: !Sub "http://${BackendUrl}/"
         PassthroughBehavior: WHEN_NO_MATCH
 
-  # 5. Deployment (Creates the 'prod' stage)
+  # 5. Deployment (Dynamic Description forces update)
   Deployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn: 
@@ -64,6 +68,7 @@ Resources:
     Properties:
       RestApiId: !Ref RestApi
       StageName: prod
+      Description: !Sub "Deploy ${DeploymentHash}"
 
   # 6. API Key
   ApiKey:
