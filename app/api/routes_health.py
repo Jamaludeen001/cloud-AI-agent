@@ -5,7 +5,10 @@ from app.services.sessions import health as sessions_health
 
 router = APIRouter(tags=["health"])
 
-
+@router.get("/health")
+async def health():
+    return {"status": "ok"}
+    
 @router.get("/healthz")
 async def healthz():
     return {"status": "ok"}
