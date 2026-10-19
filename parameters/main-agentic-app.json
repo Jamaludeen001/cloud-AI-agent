@@ -4,6 +4,10 @@
   { "ParameterKey": "SubnetIds", "ParameterValue": "subnet-04c9293e0e834fa2b,subnet-0785cf716f7eea0a9" },
   { 
     "ParameterKey": "SecretArn", 
-    "ParameterValue": "arn:aws:secretsmanager:us-east-1:340601547920:secret:main-app/secrets-AbCdEf" 
+    "ParameterValue": "arn:aws:secretsmanager:us-east-1:340601547920:secret:main-agentic-app/secrets-kcRpN9" 
+  },
+   {
+    "ParameterKey": "EnvironmentVariables",
+    "ParameterValue": "[{\"Name\":\"APP_ENV\",\"Value\":\"prod\"},{\"Name\":\"LOG_LEVEL\",\"Value\":\"INFO\"},{\"Name\":\"MAX_LLM_CALLS\",\"Value\":\"4\"},{\"Name\":\"MAX_TOKENS\",\"Value\":\"8000\"},{\"Name\":\"MAX_SECONDS\",\"Value\":\"30\"},{\"Name\":\"TOP_K_RETRIEVE\",\"Value\":\"10\"},{\"Name\":\"TOP_K_RERANK\",\"Value\":\"5\"},{\"Name\":\"RERANK_THRESHOLD\",\"Value\":\"200\"},{\"Name\":\"DEFAULT_TIMEOUT\",\"Value\":\"30\"},{\"Name\":\"MAX_BYTES\",\"Value\":\"5000000\"},{\"Name\":\"LANGSMITH_PROJECT\",\"Value\":\"agent-app\"},{\"Name\":\"EMBEDDER_URL\",\"Value\":\"http://qwen-e-LoadB-40IFScOlvagH-1351019476.us-east-1.elb.amazonaws.com\"},{\"Name\":\"GUARDRAIL_URL\",\"Value\":\"http://guardr-loadb-mrfbbmzd3zvc-305874536.us-east-1.elb.amazonaws.com\"}]"
   }
 ]
