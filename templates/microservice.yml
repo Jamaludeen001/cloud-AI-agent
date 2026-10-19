@@ -17,10 +17,38 @@ Parameters:
     Type: String
     Default: ""
     Description: "ARN of the Secrets Manager secret (leave empty if no secrets needed)"
-  EnvironmentVariables:
+
+  # 🚨 ENTERPRISE FIX: Explicit Configuration Parameters 🚨
+  EmbedderUrl:
     Type: String
-    Default: "[]"
-    Description: "JSON string of non-sensitive environment variables"
+    Default: "http://qwen-e-LoadB-40IFScOlvagH-1351019476.us-east-1.elb.amazonaws.com"
+  GuardrailUrl:
+    Type: String
+    Default: "http://guardr-loadb-mrfbbmzd3zvc-305874536.us-east-1.elb.amazonaws.com"
+  MaxLlmCalls:
+    Type: String
+    Default: "4"
+  MaxTokens:
+    Type: String
+    Default: "8000"
+  MaxSeconds:
+    Type: String
+    Default: "30"
+  TopKRetrieve:
+    Type: String
+    Default: "10"
+  TopKRerank:
+    Type: String
+    Default: "5"
+  RerankThreshold:
+    Type: String
+    Default: "200"
+  DefaultTimeout:
+    Type: String
+    Default: "30"
+  MaxBytes:
+    Type: String
+    Default: "5000000"
 
 Conditions:
   HasSecret: !Not [!Equals [!Ref SecretArn, ""]]
@@ -116,7 +144,34 @@ Resources:
           Image: !Ref ImageUri
           PortMappings:
             - ContainerPort: !Ref ContainerPort
-          Environment: !Ref EnvironmentVariables
+          # 🚨 ALL VALUES DYNAMICALLY INJECTED FROM PARAMETERS 🚨
+          Environment:
+            - Name: EMBEDDER_URL
+              Value: !Ref EmbedderUrl
+            - Name: GUARDRAIL_URL
+              Value: !Ref GuardrailUrl
+            - Name: APP_ENV
+              Value: "prod"
+            - Name: LOG_LEVEL
+              Value: "INFO"
+            - Name: MAX_LLM_CALLS
+              Value: !Ref MaxLlmCalls
+            - Name: MAX_TOKENS
+              Value: !Ref MaxTokens
+            - Name: MAX_SECONDS
+              Value: !Ref MaxSeconds
+            - Name: TOP_K_RETRIEVE
+              Value: !Ref TopKRetrieve
+            - Name: TOP_K_RERANK
+              Value: !Ref TopKRerank
+            - Name: RERANK_THRESHOLD
+              Value: !Ref RerankThreshold
+            - Name: DEFAULT_TIMEOUT
+              Value: !Ref DefaultTimeout
+            - Name: MAX_BYTES
+              Value: !Ref MaxBytes
+            - Name: LANGSMITH_PROJECT
+              Value: "agent-app"
           Secrets: !If
             - HasSecret
             - - Name: GOOGLE_API_KEY
