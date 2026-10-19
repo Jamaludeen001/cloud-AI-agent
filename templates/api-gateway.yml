@@ -38,11 +38,15 @@ Resources:
       HttpMethod: ANY
       AuthorizationType: NONE
       ApiKeyRequired: true
+      RequestParameters:
+        - method.request.path.proxy
       Integration:
         Type: HTTP_PROXY
         IntegrationHttpMethod: ANY
         Uri: !Sub "http://${BackendUrl}/{proxy}"
         PassthroughBehavior: WHEN_NO_MATCH
+        RequestParameters:
+          integration.request.path.proxy: method.request.path.proxy
 
   # 4. The Root Method (for requests to /)
   RootMethod:
