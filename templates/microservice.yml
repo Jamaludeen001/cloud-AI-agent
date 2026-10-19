@@ -158,7 +158,6 @@ Resources:
           PortMappings:
             - ContainerPort: !Ref ContainerPort
           Environment:
-            # 🚨 INJECTED LLM CONFIG 🚨
             - Name: LLM_PROVIDER
               Value: !Ref LLMProvider
             - Name: LLM_MODEL
