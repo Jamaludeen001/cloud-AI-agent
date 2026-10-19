@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-017c2515151476a42"
+  },
+  {
+    "ParameterKey": "SubnetIds",
+    "ParameterValue": "subnet-04c9293e0e834fa2b,subnet-0785cf716f7eea0a9"
+  },
+  {
+    "ParameterKey": "ImageUri",
+    "ParameterValue": "340601547920.dkr.ecr.us-east-1.amazonaws.com/qwen-embedder:latest"
+  }
+]

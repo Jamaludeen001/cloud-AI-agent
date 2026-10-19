@@ -1,0 +1,103 @@
+name: Deploy AI Microservice
+
+on:
+  workflow_dispatch:
+    inputs:
+      param_file:
+        description: 'Parameter file name (e.g., embedder, guardrail, main-agentic-app)'
+        required: true
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - outputs
+          - delete
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract Service Name
+        id: extract
+        run: |
+          SERVICE_NAME=$(jq -r '.[] | select(.ParameterKey=="ServiceName") | .ParameterValue' parameters/${{ github.event.inputs.param_file }}.json)
+          echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_ENV
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::340601547920:role/GitHubActionsDeployRole-CloudAIAgent
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure ECR Repository Exists
+        env:
+          SERVICE_NAME: ${{ env.SERVICE_NAME }}
+        run: |
+          aws ecr describe-repositories --repository-names $SERVICE_NAME || \
+          aws ecr create-repository --repository-name $SERVICE_NAME
+
+      - name: Build, tag, and push image
+        env:
+          SERVICE_NAME: ${{ env.SERVICE_NAME }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          if [ "$SERVICE_NAME" = "main-Agentic-app" ]; then
+            docker build -t $ECR_REGISTRY/$SERVICE_NAME:$IMAGE_TAG .
+          else
+            cd ${SERVICE_NAME}_api
+            docker build -t $ECR_REGISTRY/$SERVICE_NAME:$IMAGE_TAG .
+          fi
+          
+          docker push $ECR_REGISTRY/$SERVICE_NAME:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/$SERVICE_NAME:$IMAGE_TAG $ECR_REGISTRY/$SERVICE_NAME:latest
+          docker push $ECR_REGISTRY/$SERVICE_NAME:latest
+
+      - name: Deploy Stack
+        if: ${{ github.event.inputs.action == 'deploy' }}
+        env:
+          SERVICE_NAME: ${{ env.SERVICE_NAME }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          VPC_ID=$(jq -r '.[] | select(.ParameterKey=="VpcId") | .ParameterValue' parameters/${{ github.event.inputs.param_file }}.json)
+          SUBNET_IDS=$(jq -r '.[] | select(.ParameterKey=="SubnetIds") | .ParameterValue' parameters/${{ github.event.inputs.param_file }}.json)
+          SECRET_ARN=$(jq -r '.[] | select(.ParameterKey=="SecretArn") | .ParameterValue // ""' parameters/${{ github.event.inputs.param_file }}.json)
+          
+          if [ "$SERVICE_NAME" = "main-Agentic-app" ]; then
+            CONTAINER_PORT=8000
+          else
+            CONTAINER_PORT=8080
+          fi
+          
+          aws cloudformation deploy \
+            --template-file templates/microservice.yml \
+            --stack-name ${SERVICE_NAME}-stack \
+            --role-arn arn:aws:iam::340601547920:role/CloudFormationServiceRole \
+            --parameter-overrides \
+              ServiceName=${SERVICE_NAME} \
+              VpcId=${VPC_ID} \
+              SubnetIds=${SUBNET_IDS} \
+              ImageUri=${ECR_REGISTRY}/${SERVICE_NAME}:${IMAGE_TAG} \
+              ContainerPort=${CONTAINER_PORT} \
+              SecretArn=${SECRET_ARN} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset

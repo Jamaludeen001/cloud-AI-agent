@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Generic AI Microservice on ECS Fargate'
+
+Parameters:
+  ServiceName:
+    Type: String
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  ImageUri:
+    Type: String
+  ContainerPort:
+    Type: Number
+    Default: 8080
+  SecretArn:
+    Type: String
+    Default: ""
+    Description: "ARN of the Secrets Manager secret (leave empty if no secrets needed)"
+
+Conditions:
+  HasSecret: !Not [!Equals [!Ref SecretArn, ""]]
+
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${ServiceName}-cluster"
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ServiceName}-ExecutionRole-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SecretsManagerRead
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: "secretsmanager:GetSecretValue"
+                Resource: !If [HasSecret, !Ref SecretArn, "arn:aws:secretsmanager:us-east-1:340601547920:secret:no-secret-needed-*"]
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "Allow HTTP to ${ServiceName} ALB"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "Allow traffic from ALB to ${ServiceName} ECS"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets: !Ref SubnetIds
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VpcId
+      Port: !Ref ContainerPort
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckPath: /health
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ServiceName}-task"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '1024'
+      Memory: '3072'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: !Sub "${ServiceName}-container"
+          Image: !Ref ImageUri
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+          Environment:
+            # 🚨 Standard URLs (Non-sensitive) 🚨
+            - Name: EMBEDDER_URL
+              Value: "http://qwen-e-LoadB-40IFScOlvagH-1351019476.us-east-1.elb.amazonaws.com"
+            - Name: GUARDRAIL_URL
+              Value: "http://guardr-loadb-mrfbbmzd3zvc-305874536.us-east-1.elb.amazonaws.com"
+          # 🚨 Conditionally inject secrets from Secrets Manager 🚨
+          Secrets: !If
+            - HasSecret
+            - - Name: GOOGLE_API_KEY
+                ValueFrom: !Sub "${SecretArn}:GOOGLE_API_KEY::"
+              - Name: QDRANT_URL
+                ValueFrom: !Sub "${SecretArn}:QDRANT_URL::"
+              - Name: QDRANT_API_KEY
+                ValueFrom: !Sub "${SecretArn}:QDRANT_API_KEY::"
+              - Name: REDIS_URL
+                ValueFrom: !Sub "${SecretArn}:REDIS_URL::"
+            - !Ref "AWS::NoValue"
+          Essential: true
+
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: Listener
+    Properties:
+      Cluster: !Ref ECSCluster
+      LaunchType: FARGATE
+      DesiredCount: 1
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          Subnets: !Ref SubnetIds
+      TaskDefinition: !Ref TaskDefinition
+      LoadBalancers:
+        - ContainerName: !Sub "${ServiceName}-container"
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroup
+
+Outputs:
+  ServiceURL:
+    Description: The URL of the Microservice
+    Value: !Sub "http://${LoadBalancer.DNSName}"

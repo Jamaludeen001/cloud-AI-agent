@@ -1,0 +1,59 @@
+# Environment variables (CRITICAL: never commit your API keys)
+.env
+.env.*
+!.env.example
+
+# Local database storage (using Qdrant Cloud now)
+qdrant_storage/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# HuggingFace model cache (over 1GB)
+hf_cache/
+D:/hf_cache/
+.cache/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
