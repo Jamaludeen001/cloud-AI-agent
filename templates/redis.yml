@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Demo ElastiCache Redis Cluster (Single Node)'
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  EcsSecurityGroupId:
+    Type: String
+    Description: 'Security Group ID of the ECS Main App'
+
+Resources:
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow Redis traffic from ECS Main App only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref EcsSecurityGroupId
+
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for Demo Redis
+      SubnetIds: !Ref SubnetIds
+
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      Engine: redis
+      CacheNodeType: cache.t3.micro # Smallest/Cheapest node
+      NumCacheNodes: 1
+      ClusterName: main-app-redis-demo
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      VpcSecurityGroupIds:
+        - !GetAtt RedisSecurityGroup.GroupId
+      TransitEncryptionEnabled: false 
+      AtRestEncryptionEnabled: false
+
+Outputs:
+  PrimaryEndpoint:
+    Description: The endpoint for connecting to Redis
+    Value: !GetAtt RedisCluster.RedisEndpoint.Address
