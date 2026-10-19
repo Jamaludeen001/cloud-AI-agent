@@ -16,9 +16,9 @@ Parameters:
   SecretArn:
     Type: String
     Default: ""
-    Description: "ARN of the Secrets Manager secret (leave empty if no secrets needed)"
-
-  # 🚨 ENTERPRISE FIX: Explicit Configuration Parameters 🚨
+  KmsKeyArn:
+    Type: String
+    Default: ""
   EmbedderUrl:
     Type: String
     Default: "http://qwen-e-LoadB-40IFScOlvagH-1351019476.us-east-1.elb.amazonaws.com"
@@ -80,6 +80,13 @@ Resources:
               - Effect: Allow
                 Action: "secretsmanager:GetSecretValue"
                 Resource: !If [HasSecret, !Ref SecretArn, "arn:aws:secretsmanager:us-east-1:340601547920:secret:no-secret-needed-*"]
+        - PolicyName: KMSDecryptAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: "kms:Decrypt"
+                Resource: !If [HasSecret, !Ref KmsKeyArn, "arn:aws:kms:us-east-1:340601547920:key/no-key-needed-*"]
 
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -144,7 +151,6 @@ Resources:
           Image: !Ref ImageUri
           PortMappings:
             - ContainerPort: !Ref ContainerPort
-          # 🚨 ALL VALUES DYNAMICALLY INJECTED FROM PARAMETERS 🚨
           Environment:
             - Name: EMBEDDER_URL
               Value: !Ref EmbedderUrl
