@@ -9,6 +9,11 @@ Parameters:
   EcsSecurityGroupId:
     Type: String
     Description: 'Security Group ID of the ECS Main App'
+  # 🚨 NEW PARAMETER 🚨
+  ClusterName:
+    Type: String
+    Description: 'Name for the ElastiCache cluster'
+    Default: 'main-app-redis'
 
 Resources:
   RedisSecurityGroup:
@@ -32,9 +37,10 @@ Resources:
     Type: AWS::ElastiCache::CacheCluster
     Properties:
       Engine: redis
-      CacheNodeType: cache.t3.micro # Smallest/Cheapest node
+      CacheNodeType: cache.t3.micro
       NumCacheNodes: 1
-      ClusterName: main-app-redis-demo
+      # 🚨 USE THE PARAMETER HERE 🚨
+      ClusterName: !Ref ClusterName
       CacheSubnetGroupName: !Ref RedisSubnetGroup
       VpcSecurityGroupIds:
         - !GetAtt RedisSecurityGroup.GroupId
