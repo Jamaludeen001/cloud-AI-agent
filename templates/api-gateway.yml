@@ -39,7 +39,7 @@ Resources:
       AuthorizationType: NONE
       ApiKeyRequired: true
       RequestParameters:
-        - method.request.path.proxy
+        method.request.path.proxy: true
       Integration:
         Type: HTTP_PROXY
         IntegrationHttpMethod: ANY
