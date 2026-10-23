@@ -83,25 +83,25 @@ Resources:
   # =========================================================
   # DynamoDB Table for Chat Logs
   # =========================================================
-  ChatLogsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Ref DynamoTableName
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: session_id
-          AttributeType: S
-        - AttributeName: timestamp
-          AttributeType: S
-      KeySchema:
-        - AttributeName: session_id
-          KeyType: HASH
-        - AttributeName: timestamp
-          KeyType: RANGE
-      # Automatically delete old logs to save money (requires TTL attribute in your app)
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: true
+  # ChatLogsTable:
+  #   Type: AWS::DynamoDB::Table
+  #   Properties:
+  #     TableName: !Ref DynamoTableName
+  #     BillingMode: PAY_PER_REQUEST
+  #     AttributeDefinitions:
+  #       - AttributeName: session_id
+  #         AttributeType: S
+  #       - AttributeName: timestamp
+  #         AttributeType: S
+  #     KeySchema:
+  #       - AttributeName: session_id
+  #         KeyType: HASH
+  #       - AttributeName: timestamp
+  #         KeyType: RANGE
+  #     # Automatically delete old logs to save money (requires TTL attribute in your app)
+  #     TimeToLiveSpecification:
+  #       AttributeName: ttl
+  #       Enabled: true
 
   # =========================================================
   # ECS Cluster (with Container Insights for CPU/mem/OOM visibility)
