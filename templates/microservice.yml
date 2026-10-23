@@ -81,7 +81,7 @@ Conditions:
 
 Resources:
   # =========================================================
-  # DynamoDB Table for Chat Logs
+  # DynamoDB Table for Chat Logs (COMMENTED OUT - USING EXISTING)
   # =========================================================
   # ChatLogsTable:
   #   Type: AWS::DynamoDB::Table
@@ -98,13 +98,12 @@ Resources:
   #         KeyType: HASH
   #       - AttributeName: timestamp
   #         KeyType: RANGE
-  #     # Automatically delete old logs to save money (requires TTL attribute in your app)
   #     TimeToLiveSpecification:
   #       AttributeName: ttl
   #       Enabled: true
 
   # =========================================================
-  # ECS Cluster (with Container Insights for CPU/mem/OOM visibility)
+  # ECS Cluster
   # =========================================================
   ECSCluster:
     Type: AWS::ECS::Cluster
@@ -145,7 +144,8 @@ Resources:
               - Effect: Allow
                 Action: "kms:Decrypt"
                 Resource: !If [HasSecret, !Ref KmsKeyArn, "arn:aws:kms:us-east-1:340601547920:key/no-key-needed-*"]
-        # Allow ECS to write logs to DynamoDB
+        
+        # Allow ECS to write logs to EXISTING DynamoDB table
         - PolicyName: DynamoDBWriteAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -154,7 +154,8 @@ Resources:
                 Action:
                   - "dynamodb:PutItem"
                   - "dynamodb:UpdateItem"
-                Resource: !GetAtt ChatLogsTable.Arn
+                # Construct ARN dynamically using the DynamoTableName parameter
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DynamoTableName}"
 
   # =========================================================
   # CloudWatch Logs
@@ -228,7 +229,7 @@ Resources:
           TargetGroupArn: !Ref TargetGroup
 
   # =========================================================
-  # Task Definition (with explicit awslogs driver)
+  # Task Definition
   # =========================================================
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -277,7 +278,6 @@ Resources:
               Value: !Ref MaxBytes
             - Name: LANGSMITH_PROJECT
               Value: "agent-app"
-            # Pass DynamoDB table name to the app
             - Name: DYNAMODB_TABLE_NAME
               Value: !Ref DynamoTableName
           Secrets: !If
@@ -319,7 +319,7 @@ Resources:
           TargetGroupArn: !Ref TargetGroup
 
   # =========================================================
-  # Metric Filters — turn log patterns into CloudWatch metrics
+  # Metric Filters
   # =========================================================
   ErrorLogMetricFilter:
     Type: AWS::Logs::MetricFilter
@@ -502,6 +502,7 @@ Outputs:
     Description: SNS topic that receives all alarms
     Value: !Ref AlertTopic
 
+  # DynamoDBTableName commented out because resource is not created by this stack
   # DynamoDBTableName:
   #   Description: The name of the DynamoDB table for chat logs
   #   Value: !Ref ChatLogsTable
