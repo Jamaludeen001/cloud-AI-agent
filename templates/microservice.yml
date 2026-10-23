@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Generic AI Microservice on ECS Fargate'
+Description: 'Generic AI Microservice on ECS Fargate with CloudWatch logging & alarms'
 
 Parameters:
   ServiceName:
@@ -55,16 +55,40 @@ Parameters:
   MaxBytes:
     Type: String
     Default: "5000000"
+  # ---- Alerting params ----
+  AlarmEmail:
+    Type: String
+    Description: Email address to receive alarm notifications
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+  ErrorThreshold:
+    Type: Number
+    Default: 5
+    Description: Number of ERROR log lines in 5 minutes before alarming
+  EnableContainerInsights:
+    Type: String
+    Default: "enabled"
+    AllowedValues: [enabled, disabled]
 
 Conditions:
   HasSecret: !Not [!Equals [!Ref SecretArn, ""]]
 
 Resources:
+  # =========================================================
+  # ECS Cluster (with Container Insights for CPU/mem/OOM visibility)
+  # =========================================================
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Sub "${ServiceName}-cluster"
+      ClusterSettings:
+        - Name: containerInsights
+          Value: !Ref EnableContainerInsights
 
+  # =========================================================
+  # IAM
+  # =========================================================
   ExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -94,6 +118,29 @@ Resources:
                 Action: "kms:Decrypt"
                 Resource: !If [HasSecret, !Ref KmsKeyArn, "arn:aws:kms:us-east-1:340601547920:key/no-key-needed-*"]
 
+  # =========================================================
+  # CloudWatch Logs
+  # =========================================================
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${ServiceName}"
+      RetentionInDays: !Ref LogRetentionDays
+
+  # =========================================================
+  # SNS Topic for alerts
+  # =========================================================
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${ServiceName}-alerts"
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlarmEmail
+
+  # =========================================================
+  # Networking / ALB
+  # =========================================================
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -142,8 +189,12 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
 
+  # =========================================================
+  # Task Definition (with explicit awslogs driver)
+  # =========================================================
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
+    DependsOn: LogGroup
     Properties:
       Family: !Sub "${ServiceName}-task"
       NetworkMode: awsvpc
@@ -162,7 +213,6 @@ Resources:
               Value: !Ref LLMProvider
             - Name: LLM_MODEL
               Value: !Ref LLMModel
-            # Static configs
             - Name: EMBEDDER_URL
               Value: !Ref EmbedderUrl
             - Name: GUARDRAIL_URL
@@ -200,6 +250,12 @@ Resources:
               - Name: REDIS_URL
                 ValueFrom: !Sub "${SecretArn}:REDIS_URL::"
             - !Ref "AWS::NoValue"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: !Sub "${ServiceName}"
           Essential: true
 
   ECSService:
@@ -221,7 +277,186 @@ Resources:
           ContainerPort: !Ref ContainerPort
           TargetGroupArn: !Ref TargetGroup
 
+  # =========================================================
+  # Metric Filters — turn log patterns into CloudWatch metrics
+  # =========================================================
+  ErrorLogMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    DependsOn: LogGroup
+    Properties:
+      LogGroupName: !Ref LogGroup
+      FilterPattern: 'ERROR'
+      MetricTransformations:
+        - MetricNamespace: !Sub "${ServiceName}/App"
+          MetricName: ErrorCount
+          MetricValue: "1"
+          DefaultValue: 0
+
+  ExceptionLogMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    DependsOn: LogGroup
+    Properties:
+      LogGroupName: !Ref LogGroup
+      FilterPattern: 'Exception'
+      MetricTransformations:
+        - MetricNamespace: !Sub "${ServiceName}/App"
+          MetricName: ExceptionCount
+          MetricValue: "1"
+          DefaultValue: 0
+
+  # =========================================================
+  # CloudWatch Alarms
+  # =========================================================
+  AppErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: ErrorLogMetricFilter
+    Properties:
+      AlarmName: !Sub "${ServiceName}-app-errors"
+      AlarmDescription: !Sub ">= ${ErrorThreshold} ERROR log lines in 5 minutes"
+      Namespace: !Sub "${ServiceName}/App"
+      MetricName: ErrorCount
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: !Ref ErrorThreshold
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+  AppExceptionAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: ExceptionLogMetricFilter
+    Properties:
+      AlarmName: !Sub "${ServiceName}-app-exceptions"
+      AlarmDescription: "Exceptions detected in application logs"
+      Namespace: !Sub "${ServiceName}/App"
+      MetricName: ExceptionCount
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+  UnhealthyHostAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ServiceName}-unhealthy-hosts"
+      AlarmDescription: "ALB reports unhealthy targets"
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - Name: TargetGroup
+          Value: !GetAtt TargetGroup.TargetGroupFullName
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+  Http5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ServiceName}-alb-5xx"
+      AlarmDescription: "ALB target 5xx responses detected"
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+  RunningTaskCountAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ServiceName}-tasks-down"
+      AlarmDescription: "ECS service has fewer than 1 running task (crashed / failed to start)"
+      Namespace: AWS/ECS
+      MetricName: RunningTaskCount
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSCluster
+        - Name: ServiceName
+          Value: !GetAtt ECSService.Name
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+  CpuHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ServiceName}-cpu-high"
+      AlarmDescription: "ECS service CPU > 85%"
+      Namespace: AWS/ECS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSCluster
+        - Name: ServiceName
+          Value: !GetAtt ECSService.Name
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+  MemoryHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ServiceName}-memory-high"
+      AlarmDescription: "ECS service memory > 85% (OOM risk)"
+      Namespace: AWS/ECS
+      MetricName: MemoryUtilization
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSCluster
+        - Name: ServiceName
+          Value: !GetAtt ECSService.Name
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
 Outputs:
   ServiceURL:
     Description: The URL of the Microservice
     Value: !Sub "http://${LoadBalancer.DNSName}"
+
+  LogGroupName:
+    Description: CloudWatch log group for service logs
+    Value: !Ref LogGroup
+
+  LogGroupConsoleUrl:
+    Description: Open logs in CloudWatch console
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/${LogGroup}"
+
+  AlertsTopicArn:
+    Description: SNS topic that receives all alarms
+    Value: !Ref AlertTopic
