@@ -502,6 +502,6 @@ Outputs:
     Description: SNS topic that receives all alarms
     Value: !Ref AlertTopic
 
-  DynamoDBTableName:
-    Description: The name of the DynamoDB table for chat logs
-    Value: !Ref ChatLogsTable
+  # DynamoDBTableName:
+  #   Description: The name of the DynamoDB table for chat logs
+  #   Value: !Ref ChatLogsTable
