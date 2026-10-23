@@ -4,6 +4,7 @@
   { "ParameterKey": "SubnetIds", "ParameterValue": "subnet-04c9293e0e834fa2b,subnet-0785cf716f7eea0a9" },
   { "ParameterKey": "SecretArn", "ParameterValue": "arn:aws:secretsmanager:us-east-1:340601547920:secret:main-agentic-app/secrets-kcRpN9" },
   { "ParameterKey": "KmsKeyArn", "ParameterValue": "arn:aws:kms:us-east-1:340601547920:key/090358b8-1277-47c6-abfa-fcb1cd16b532" },
+  { "ParameterKey": "AlarmEmail", "ParameterValue": "jjamaludeen27@gmail.com" },
   { "ParameterKey": "LLMProvider", "ParameterValue": "google" },
   { "ParameterKey": "LLMModel", "ParameterValue": "gemini-3.5-flash-lite" },
   { "ParameterKey": "MaxLlmCalls", "ParameterValue": "4" },
