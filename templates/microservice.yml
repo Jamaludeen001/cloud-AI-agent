@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Generic AI Microservice on ECS Fargate with CloudWatch logging & alarms'
+Description: 'Generic AI Microservice on ECS Fargate with CloudWatch logging, alarms & DynamoDB'
 
 Parameters:
   ServiceName:
@@ -70,11 +70,39 @@ Parameters:
     Type: String
     Default: "enabled"
     AllowedValues: [enabled, disabled]
+  # ---- DynamoDB Logging Params ----
+  DynamoTableName:
+    Type: String
+    Default: "AgentChatLogs"
+    Description: The name of the DynamoDB table to store chat logs
 
 Conditions:
   HasSecret: !Not [!Equals [!Ref SecretArn, ""]]
 
 Resources:
+  # =========================================================
+  # DynamoDB Table for Chat Logs
+  # =========================================================
+  ChatLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref DynamoTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: session_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: session_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      # Automatically delete old logs to save money (requires TTL attribute in your app)
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
   # =========================================================
   # ECS Cluster (with Container Insights for CPU/mem/OOM visibility)
   # =========================================================
@@ -117,6 +145,16 @@ Resources:
               - Effect: Allow
                 Action: "kms:Decrypt"
                 Resource: !If [HasSecret, !Ref KmsKeyArn, "arn:aws:kms:us-east-1:340601547920:key/no-key-needed-*"]
+        # Allow ECS to write logs to DynamoDB
+        - PolicyName: DynamoDBWriteAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "dynamodb:PutItem"
+                  - "dynamodb:UpdateItem"
+                Resource: !GetAtt ChatLogsTable.Arn
 
   # =========================================================
   # CloudWatch Logs
@@ -239,6 +277,9 @@ Resources:
               Value: !Ref MaxBytes
             - Name: LANGSMITH_PROJECT
               Value: "agent-app"
+            # Pass DynamoDB table name to the app
+            - Name: DYNAMODB_TABLE_NAME
+              Value: !Ref DynamoTableName
           Secrets: !If
             - HasSecret
             - - Name: GOOGLE_API_KEY
@@ -460,3 +501,7 @@ Outputs:
   AlertsTopicArn:
     Description: SNS topic that receives all alarms
     Value: !Ref AlertTopic
+
+  DynamoDBTableName:
+    Description: The name of the DynamoDB table for chat logs
+    Value: !Ref ChatLogsTable
