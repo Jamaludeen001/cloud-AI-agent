@@ -14,5 +14,6 @@
   { "ParameterKey": "TopKRerank", "ParameterValue": "5" },
   { "ParameterKey": "RerankThreshold", "ParameterValue": "200" },
   { "ParameterKey": "DefaultTimeout", "ParameterValue": "30" },
-  { "ParameterKey": "MaxBytes", "ParameterValue": "5000000" }
+  { "ParameterKey": "MaxBytes", "ParameterValue": "5000000" },
+  { "ParameterKey": "TaskRoleArn", "ParameterValue": "arn:aws:iam::340601547920:role/main-Agentic-app-TaskRole-role" }
 ]
