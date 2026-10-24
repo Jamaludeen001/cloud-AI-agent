@@ -64,6 +64,10 @@ Parameters:
   DynamoTableName:
     Type: String
     Default: "AgentChatLogs"
+  # --- ADDED PARAMETER FOR THE MANUALLY CREATED ROLE ---
+  TaskRoleArn:
+    Type: String
+    Description: ARN of the existing IAM role for the ECS Task
 
 Conditions:
   HasSecret: !Not [!Equals [!Ref SecretArn, ""]]
@@ -106,28 +110,7 @@ Resources:
                 Action: "kms:Decrypt"
                 Resource: !If [HasSecret, !Ref KmsKeyArn, "arn:aws:kms:us-east-1:340601547920:key/no-key-needed-*"]
 
-  # --- TASK ROLE (For your Python App to access DynamoDB) ---
-  TaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub "${ServiceName}-TaskRole-role"
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: DynamoDBWriteAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - "dynamodb:PutItem"
-                  - "dynamodb:UpdateItem"
-                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DynamoTableName}"
+  # --- THE TASKROLE RESOURCE IS DELETED FROM HERE ---
 
   LogGroup:
     Type: AWS::Logs::LogGroup
@@ -202,7 +185,7 @@ Resources:
       Cpu: '1024'
       Memory: '3072'
       ExecutionRoleArn: !GetAtt ExecutionRole.Arn
-      TaskRoleArn: !GetAtt TaskRole.Arn
+      TaskRoleArn: !Ref TaskRoleArn # <--- REFERENCES THE PARAMETER NOW
       ContainerDefinitions:
         - Name: !Sub "${ServiceName}-container"
           Image: !Ref ImageUri
@@ -213,7 +196,6 @@ Resources:
               Value: !Ref LLMProvider
             - Name: LLM_MODEL
               Value: !Ref LLMModel
-            # REMOVED EMBEDDER_URL AND GUARDRAIL_URL FROM HERE
             - Name: APP_ENV
               Value: "prod"
             - Name: LOG_LEVEL
@@ -248,7 +230,6 @@ Resources:
                 ValueFrom: !Sub "${SecretArn}:QDRANT_API_KEY::"
               - Name: REDIS_URL
                 ValueFrom: !Sub "${SecretArn}:REDIS_URL::"
-              # ADDED EMBEDDER_URL AND GUARDRAIL_URL HERE
               - Name: EMBEDDER_URL
                 ValueFrom: !Sub "${SecretArn}:EMBEDDER_URL::"
               - Name: GUARDRAIL_URL
