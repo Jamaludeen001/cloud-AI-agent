@@ -19,12 +19,6 @@ Parameters:
   KmsKeyArn:
     Type: String
     Default: ""
-  EmbedderUrl:
-    Type: String
-    Default: ""
-  GuardrailUrl:
-    Type: String
-    Default: ""
   LLMProvider:
     Type: String
     Default: ""
@@ -55,56 +49,26 @@ Parameters:
   MaxBytes:
     Type: String
     Default: "5000000"
-  # ---- Alerting params ----
   AlarmEmail:
     Type: String
-    Description: Email address to receive alarm notifications
   LogRetentionDays:
     Type: Number
     Default: 14
   ErrorThreshold:
     Type: Number
     Default: 5
-    Description: Number of ERROR log lines in 5 minutes before alarming
   EnableContainerInsights:
     Type: String
     Default: "enabled"
     AllowedValues: [enabled, disabled]
-  # ---- DynamoDB Logging Params ----
   DynamoTableName:
     Type: String
     Default: "AgentChatLogs"
-    Description: The name of the DynamoDB table to store chat logs
 
 Conditions:
   HasSecret: !Not [!Equals [!Ref SecretArn, ""]]
 
 Resources:
-  # =========================================================
-  # DynamoDB Table for Chat Logs (COMMENTED OUT - USING EXISTING)
-  # =========================================================
-  # ChatLogsTable:
-  #   Type: AWS::DynamoDB::Table
-  #   Properties:
-  #     TableName: !Ref DynamoTableName
-  #     BillingMode: PAY_PER_REQUEST
-  #     AttributeDefinitions:
-  #       - AttributeName: session_id
-  #         AttributeType: S
-  #       - AttributeName: timestamp
-  #         AttributeType: S
-  #     KeySchema:
-  #       - AttributeName: session_id
-  #         KeyType: HASH
-  #       - AttributeName: timestamp
-  #         KeyType: RANGE
-  #     TimeToLiveSpecification:
-  #       AttributeName: ttl
-  #       Enabled: true
-
-  # =========================================================
-  # ECS Cluster
-  # =========================================================
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -113,9 +77,6 @@ Resources:
         - Name: containerInsights
           Value: !Ref EnableContainerInsights
 
-  # =========================================================
-  # IAM
-  # =========================================================
   ExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -144,8 +105,20 @@ Resources:
               - Effect: Allow
                 Action: "kms:Decrypt"
                 Resource: !If [HasSecret, !Ref KmsKeyArn, "arn:aws:kms:us-east-1:340601547920:key/no-key-needed-*"]
-        
-        # Allow ECS to write logs to EXISTING DynamoDB table
+
+  # --- TASK ROLE (For your Python App to access DynamoDB) ---
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ServiceName}-TaskRole-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
         - PolicyName: DynamoDBWriteAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -154,21 +127,14 @@ Resources:
                 Action:
                   - "dynamodb:PutItem"
                   - "dynamodb:UpdateItem"
-                # Construct ARN dynamically using the DynamoTableName parameter
                 Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${DynamoTableName}"
 
-  # =========================================================
-  # CloudWatch Logs
-  # =========================================================
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "/ecs/${ServiceName}"
       RetentionInDays: !Ref LogRetentionDays
 
-  # =========================================================
-  # SNS Topic for alerts
-  # =========================================================
   AlertTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -177,9 +143,6 @@ Resources:
         - Protocol: email
           Endpoint: !Ref AlarmEmail
 
-  # =========================================================
-  # Networking / ALB
-  # =========================================================
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -228,9 +191,6 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
 
-  # =========================================================
-  # Task Definition
-  # =========================================================
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     DependsOn: LogGroup
@@ -242,6 +202,7 @@ Resources:
       Cpu: '1024'
       Memory: '3072'
       ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
       ContainerDefinitions:
         - Name: !Sub "${ServiceName}-container"
           Image: !Ref ImageUri
@@ -252,10 +213,7 @@ Resources:
               Value: !Ref LLMProvider
             - Name: LLM_MODEL
               Value: !Ref LLMModel
-            - Name: EMBEDDER_URL
-              Value: !Ref EmbedderUrl
-            - Name: GUARDRAIL_URL
-              Value: !Ref GuardrailUrl
+            # REMOVED EMBEDDER_URL AND GUARDRAIL_URL FROM HERE
             - Name: APP_ENV
               Value: "prod"
             - Name: LOG_LEVEL
@@ -290,6 +248,11 @@ Resources:
                 ValueFrom: !Sub "${SecretArn}:QDRANT_API_KEY::"
               - Name: REDIS_URL
                 ValueFrom: !Sub "${SecretArn}:REDIS_URL::"
+              # ADDED EMBEDDER_URL AND GUARDRAIL_URL HERE
+              - Name: EMBEDDER_URL
+                ValueFrom: !Sub "${SecretArn}:EMBEDDER_URL::"
+              - Name: GUARDRAIL_URL
+                ValueFrom: !Sub "${SecretArn}:GUARDRAIL_URL::"
             - !Ref "AWS::NoValue"
           LogConfiguration:
             LogDriver: awslogs
@@ -318,9 +281,7 @@ Resources:
           ContainerPort: !Ref ContainerPort
           TargetGroupArn: !Ref TargetGroup
 
-  # =========================================================
-  # Metric Filters
-  # =========================================================
+  # ... [Keep all your MetricFilters, Alarms, and Outputs exactly as they are] ...
   ErrorLogMetricFilter:
     Type: AWS::Logs::MetricFilter
     DependsOn: LogGroup
@@ -345,9 +306,6 @@ Resources:
           MetricValue: "1"
           DefaultValue: 0
 
-  # =========================================================
-  # CloudWatch Alarms
-  # =========================================================
   AppErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn: ErrorLogMetricFilter
@@ -501,8 +459,3 @@ Outputs:
   AlertsTopicArn:
     Description: SNS topic that receives all alarms
     Value: !Ref AlertTopic
-
-  # DynamoDBTableName commented out because resource is not created by this stack
-  # DynamoDBTableName:
-  #   Description: The name of the DynamoDB table for chat logs
-  #   Value: !Ref ChatLogsTable
